@@ -1,0 +1,71 @@
+hive> create database movies_artists_en;
+
+hive> use movies_artists_en;
+
+hive> ADD JAR /home/abinaya/hadoop-jarFiles/json-serde-1.3.8-jar-with-dependencies.jar;
+
+hive> create table movies_data (
+	id string, 	
+      title string, 
+      year int,
+      genre string,
+      summary string,
+      country string,
+      director STRUCT<id:string, last_name:string,first_name:string,year_of_birth:string>, 	actors ARRAY<STRUCT<id:string,role:string>>)
+	ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe';
+
+hive> LOAD DATA INPATH '/movies_en.json' INTO TABLE movies_data;
+
+hive> create table artists_data (
+	id string,
+	last_name string,
+	first_name string,
+      year_of_birth string)
+	ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe';
+
+hive> LOAD DATA INPATH '/artists_en.json' INTO TABLE artists_data;
+
+hive> SET hive.exec.dynamic.partition=true;
+hive> SET hive.exec.dynamic.partition.mode=true;
+
+hive> create table movies_USA(
+	id string, 	
+      title string, 
+      year int,
+      genre string,
+      summary string,
+	director STRUCT<id:string, last_name:string,first_name:string,year_of_birth:string>, 	actors ARRAY<STRUCT<id:string,role:string>>)
+	PARTITIONED BY (country string)
+	ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe';
+
+hive> INSERT OVERWRITE TABLE movies_USA partition (country = 'USA')
+	SELECT id,title,year,genre,summary,director,actors FROM movies_data;
+
+hive> select year, collect_set(title) from movies_USA
+	group by year;
+
+hive> select director, collect_set(title) from movies_USA
+	group by director;
+
+hive> select id, actors_info from movies_USA
+	LATERAL VIEW explode(actors) actors_expd AS actors_info;
+
+hive> select tab1.id, CONCAT_WS(', ',tab1.actors_info.id, 	tab1.actors_info.role ,tab2.last_name,tab2.first_name,tab2.year_of_birth) from 	(select id, actors_info from movies_partitioned
+	LATERAL VIEW explode(actors) actors_expd AS actors_info) tab1
+	JOIN artists_data tab2 ON tab1.actors_info.id = tab2.id;
+
+hive> create table mUS_actor_FULL(id string , actors_info string)
+	ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe';
+
+hive> INSERT OVERWRITE TABLE mUS_actor_FULL 
+	 select tab1.id, CONCAT_WS(', ',tab1.actors_info.id, 	tab1.actors_info.role ,tab2.last_name,tab2.first_name,tab2.year_of_birth) from 	(select id, actors_info from movies_USA
+	LATERAL VIEW explode(actors) actors_expd AS actors_info) tab1
+	JOIN artists_data tab2 ON tab1.actors_info.id = tab2.id;
+
+hive> select id, director,actors from movies_USA 
+	where director.id = actor.id
+	group by director;
+
+hive> select id, director from movies_USA
+	where substr(director.last_name,0,1) = substr(director.first_name,0,1);
+
